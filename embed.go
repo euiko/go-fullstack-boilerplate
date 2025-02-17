@@ -5,7 +5,7 @@ package main
 import (
 	"embed"
 
-	"github.com/euiko/go-fullstack-boilerplate/pkg/webapp"
+	"github.com/euiko/go-fullstack-boilerplate/internal/core/webapp"
 )
 
 //go:embed ui/dist
