@@ -7,11 +7,11 @@ import (
 	"net/http/httputil"
 	"net/url"
 
-	"github.com/euiko/go-fullstack-boilerplate/pkg/log"
+	"github.com/euiko/go-fullstack-boilerplate/internal/core/log"
 	"github.com/go-chi/chi/v5"
 )
 
-func createStaticRoutes(settings *StaticServerSettings, r chi.Router) {
+func createStaticRoutes(r chi.Router) {
 	target := "http://localhost:5173"
 	url, err := url.Parse(target)
 	if err != nil {
