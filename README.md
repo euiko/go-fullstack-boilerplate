@@ -20,8 +20,8 @@ An opinionated boilerplate for building a fullstack application with Go and Vue 
     - [ ] Audit Log
     - [ ] File Storage
     - [ ] etc.
-- [ ] Database
-- [ ] ORM
-- [ ] Migration
+- [x] Database
+- [x] ORM
+- [x] Migration
 - [ ] Testing
-- [ ] CI/CD
+- [x] CI/CD (only basic CI for running unit tests)

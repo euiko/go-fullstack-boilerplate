@@ -2,7 +2,6 @@ package log
 
 import (
 	"context"
-	"errors"
 	"time"
 )
 
@@ -17,20 +16,13 @@ const (
 	TraceLevel
 )
 
-type key int
-
-var (
-	loggerContextKey key
-	fieldsContextKey key
-	ErrNoLogger      = errors.New("no logger available")
-)
-
 type (
 	// Logger represent any logging capable
 	Logger interface {
 		Log(level Level, msg *Log)
 	}
 
+	// Fields is a map of key-value pairs of metadata that will be logged
 	Fields map[string]interface{}
 
 	// Log holds the data that will be logged
@@ -42,15 +34,29 @@ type (
 		err     error
 	}
 
+	// Option is a function that configures a log
 	Option interface {
 		Configure(o *Log)
 	}
 
+	// OptionFunc is a function that configures a log
 	OptionFunc func(o *Log)
+
+	// contextKey is a type to help avoid context key collision
+	contextKey int
 )
 
-var globalLogger Logger
+// define context keys using iota
+const (
+	fieldsContextKey contextKey = iota
+)
 
+// globalLogger holds the default logger
+var (
+	globalLogger Logger
+)
+
+// Configure implements Option interface
 func (f OptionFunc) Configure(o *Log) {
 	f(o)
 }
@@ -93,38 +99,47 @@ func WithError(err error) Option {
 	})
 }
 
+// Fatal logs a message at the fatal level
 func Fatal(msg string, opts ...Option) error {
 	return log(FatalLevel, msg, opts...)
 }
 
+// Error logs a message at the error level
 func Error(msg string, opts ...Option) error {
 	return log(ErrorLevel, msg, opts...)
 }
 
+// Warning logs a message at the warning level
 func Warning(msg string, opts ...Option) error {
 	return log(WarningLevel, msg, opts...)
 }
 
+// Info logs a message at the info level
 func Info(msg string, opts ...Option) error {
 	return log(InfoLevel, msg, opts...)
 }
 
+// Debug logs a message at the debug level
 func Debug(msg string, opts ...Option) error {
 	return log(DebugLevel, msg, opts...)
 }
 
+// Trace logs a message at the trace level
 func Trace(msg string, opts ...Option) error {
 	return log(TraceLevel, msg, opts...)
 }
 
+// SetDefault sets the default logger
 func SetDefault(logger Logger) {
 	globalLogger = logger
 }
 
+// Default returns the default logger
 func Default() Logger {
 	return globalLogger
 }
 
+// SetFieldsContext sets the fields context
 func SetFieldsContext(ctx context.Context, fields Fields) context.Context {
 	// load or create fields from context
 	current := getFieldsContext(ctx)
@@ -138,7 +153,7 @@ func SetFieldsContext(ctx context.Context, fields Fields) context.Context {
 	}
 
 	// inject to context
-	return context.WithValue(ctx, loggerContextKey, current)
+	return context.WithValue(ctx, fieldsContextKey, current)
 }
 
 func log(level Level, msg string, opts ...Option) error {
@@ -202,6 +217,6 @@ func getFieldsContext(ctx context.Context) Fields {
 }
 
 func init() {
-	// set the default logger to use logrus
+	// set the default logger to use logrus with Info level
 	SetDefault(NewLogrusLogger(InfoLevel))
 }

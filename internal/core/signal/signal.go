@@ -5,7 +5,7 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/euiko/go-fullstack-boilerplate/pkg/log"
+	"github.com/euiko/go-fullstack-boilerplate/internal/core/log"
 )
 
 type (

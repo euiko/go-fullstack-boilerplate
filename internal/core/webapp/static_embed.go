@@ -11,6 +11,8 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+const indexPath = "index.html"
+
 var StaticFS embed.FS
 
 type subFS struct {
@@ -23,14 +25,14 @@ func (s subFS) Open(name string) (fs.File, error) {
 	return s.fs.Open(s.path + "/" + name)
 }
 
-func createStaticRoutes(settings *StaticServerSettings, r chi.Router) {
+func createStaticRoutes(r chi.Router) {
 	staticFs := newSubFS(StaticFS, "ui/dist")
 
 	// serve other files from the embedded StaticFS
 	entries, _ := StaticFS.ReadDir("ui/dist")
 	for _, entry := range entries {
 		// skip index.html
-		if entry.Name() == settings.IndexPath {
+		if entry.Name() == indexPath {
 			continue
 		}
 
@@ -61,7 +63,7 @@ func createStaticRoutes(settings *StaticServerSettings, r chi.Router) {
 
 	// serve index.html from embedded static
 	r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFileFS(w, r, staticFs, settings.IndexPath)
+		http.ServeFileFS(w, r, staticFs, indexPath)
 	})
 }
 

@@ -4,18 +4,19 @@ import (
 	"context"
 	"net/http"
 	"os"
-	"path"
 	"time"
 
-	"github.com/euiko/go-fullstack-boilerplate/pkg/log"
-	"github.com/euiko/go-fullstack-boilerplate/pkg/signal"
+	"github.com/euiko/go-fullstack-boilerplate/internal/core/log"
+	"github.com/euiko/go-fullstack-boilerplate/internal/core/signal"
 	"github.com/go-chi/chi/v5"
+	"github.com/spf13/cobra"
 )
 
 type (
 	App struct {
-		name     string
-		settings Settings
+		name      string
+		shortName string
+		settings  *Settings
 
 		registry           registry
 		modules            []Module
@@ -35,20 +36,21 @@ func WithDefaultMiddlewares(middlewares ...Middleware) Option {
 	}
 }
 
-func NewApp(name string, opts ...Option) *App {
-	app := &App{
+func NewApp(name string, shortName string, opts ...Option) *App {
+	app := App{
 		name:               name,
-		settings:           loadSettings(name),
+		shortName:          shortName,
+		settings:           nil,
 		modules:            []Module{},
 		defaultMiddlewares: []Middleware{},
 	}
 
 	// apply options
 	for _, opt := range opts {
-		opt(app)
+		opt(&app)
 	}
 
-	return app
+	return &app
 }
 
 // Register a module factory function to the app
@@ -58,22 +60,47 @@ func (a *App) Register(f func(*Settings) Module) {
 
 // Run the app
 func (a *App) Run(ctx context.Context) error {
+	// load settings
+	settings := loadSettings(a.name, a.shortName)
+	a.settings = &settings
+
 	// initialize logger
-	initializeLogger(a.settings.Log)
+	initializeLogger(settings.Log)
 
 	// create and initialize modules
-	log.Info("initializing modules...")
+	log.Trace("initializing modules...")
 	a.modules = make([]Module, len(a.registry))
 	for i, factory := range a.registry {
-		a.modules[i] = factory(&a.settings)
+		a.modules[i] = factory(&settings)
 		a.modules[i].Init(ctx)
 	}
 
-	// create and run server
-	log.Info("starting the server...")
+	rootCmd := a.initializeCli()
+	if err := rootCmd.ExecuteContext(ctx); err != nil {
+		return err
+	}
+
+	// close all modules
+	log.Trace("closing modules...")
+	for _, module := range a.modules {
+		module.Close()
+	}
+	return nil
+}
+
+func (a *App) Start(ctx context.Context) error {
+	// create and initialize server
+	log.Info("starting the server...", log.WithField("addr", a.settings.Server.Addr))
 	server := a.createServer()
-	go server.ListenAndServe()
-	log.Info("server started", log.WithField("addr", a.settings.Server.Addr))
+	if err := initializeDB(a.settings.DB); err != nil {
+		return err
+	}
+
+	go func() {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			panic(err)
+		}
+	}()
 
 	// wait for signal to be done
 	signal := signal.NewSignalNotifier()
@@ -82,17 +109,26 @@ func (a *App) Run(ctx context.Context) error {
 	})
 	signal.Wait(ctx)
 
-	// close all modules
-	log.Info("closing modules...")
-	for _, module := range a.modules {
-		module.Close()
-	}
-
 	// close the server within 120s
 	log.Info("closing the server...")
+	defer closeDB()
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel() // ensure no context leak on graceful shutdown
 	return server.Shutdown(ctx)
+}
+
+func (a *App) initializeCli() *cobra.Command {
+	rootCmd := cobra.Command{
+		Use: a.name,
+	}
+
+	for m := range a.modules {
+		if cli, ok := a.modules[m].(CLI); ok {
+			cli.Command(&rootCmd)
+		}
+	}
+
+	return &rootCmd
 }
 
 // internal createServer function
@@ -107,16 +143,18 @@ func (a *App) createServer() http.Server {
 
 	// register static routes
 	if a.settings.StaticServer.Enabled {
-		createStaticRoutes(&a.settings.StaticServer, router)
+		createStaticRoutes(router)
 	}
 
 	// register routes
-	for _, module := range a.modules {
-		// register routes
-		if service, ok := module.(Service); ok {
-			service.Route(router)
+	router.Route("/api", func(r chi.Router) {
+		for _, module := range a.modules {
+			// register routes
+			if service, ok := module.(APIService); ok {
+				service.APIRoute(r)
+			}
 		}
-	}
+	})
 
 	// creates http server
 	// TODO: add https support
@@ -127,47 +165,6 @@ func (a *App) createServer() http.Server {
 		WriteTimeout: a.settings.Server.WriteTimeout,
 		IdleTimeout:  a.settings.Server.IdleTimeout,
 	}
-}
-
-func loadSettings(name string) Settings {
-	// default settings
-	settings := Settings{
-		Log: LogSettings{
-			Level: "info",
-		},
-		Server: ServerSettings{
-			Addr:         ":8080",
-			ReadTimeout:  10 * time.Second,
-			WriteTimeout: 10 * time.Second,
-			IdleTimeout:  0,
-			// TODO: add https support
-		},
-		StaticServer: StaticServerSettings{
-			Enabled:    true,
-			Path:       "/",
-			IndexPath:  "index.html",
-			AssetsPath: "assets",
-		},
-		config: nil,
-	}
-
-	// use viper as config provider
-	viperOpts := []ViperOptions{}
-	homeDir := os.Getenv("HOME")
-	if homeDir != "" {
-		viperOpts = append(viperOpts,
-			ViperPaths(homeDir),
-			ViperPaths(path.Join(homeDir, ".config", name)),
-		)
-	}
-
-	// load settings
-	config := NewViper(name, viperOpts...)
-	config.Scan(&settings)
-
-	// set the setting's config
-	settings.config = config
-	return settings
 }
 
 func initializeLogger(settings LogSettings) {

@@ -4,12 +4,11 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/euiko/go-fullstack-boilerplate/pkg/webapp"
+	"github.com/euiko/go-fullstack-boilerplate/internal/core/webapp"
 	"github.com/go-chi/chi/v5"
 )
 
 type Service struct {
-	webapp.Service
 }
 
 func NewService(settings *webapp.Settings) webapp.Module {
